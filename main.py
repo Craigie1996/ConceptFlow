@@ -10,8 +10,6 @@ from model import ConceptFlow, use_cuda
 from preprocession import prepare_data, build_vocab, gen_batched_data
 import torch
 
-csk_triples, csk_entities, kb_dict = [], [], []
-dict_csk_entities, dict_csk_triples = {}, {}
 class Config():
     def __init__(self, model = 'ConceptFlow', description = None):
         self.model = model
@@ -24,7 +22,7 @@ class Config():
         self.layers = 2
         self.batch_size = 40
         self.data_dir = "data"
-        self.num_epoch = 20
+        self.num_epoch = 10
         self.lr_rate = 0.0001
         self.lstm_dropout = 0.3
         self.linear_dropout = 0.2
@@ -53,7 +51,7 @@ def train(model, data_train, config, word2id, entity2id, is_inference = False):
         decoder_loss, sentence_ppx, sentence_ppx_word, sentence_ppx_local, sentence_ppx_only_two, word_neg_num, local_neg_num, only_two_neg_num = model(batched_data)
         return decoder_loss, sentence_ppx, sentence_ppx_word, sentence_ppx_local, sentence_ppx_only_two, word_neg_num, local_neg_num, only_two_neg_num
 
-def evaluate(model, data_dev, config, word2id, entity2id, epoch = 0, is_test = False, model_path = None):
+def evaluate(model, data_test, config, word2id, entity2id, epoch = 0, is_test = False, model_path = None):
     if model_path != None:
         model.load_state_dict(torch.load(model_path))
     sentence_ppx_loss = 0
@@ -100,9 +98,9 @@ def evaluate(model, data_dev, config, word2id, entity2id, epoch = 0, is_test = F
         w.close()
 
 
-    for iteration in range(len(data_dev) // config.batch_size):
+    for iteration in range(len(data_test) // config.batch_size):
         
-        decoder_loss, sentence_ppx, sentence_ppx_word, sentence_ppx_local, sentence_ppx_only_two, word_index, word_neg_num, local_neg_num, only_two_neg_num, selector = train(model, data_dev[(iteration * config.batch_size):(iteration * config.batch_size + config.batch_size)], config, word2id, entity2id, model.is_inference)
+        decoder_loss, sentence_ppx, sentence_ppx_word, sentence_ppx_local, sentence_ppx_only_two, word_index, word_neg_num, local_neg_num, only_two_neg_num, selector = train(model, data_test[(iteration * config.batch_size):(iteration * config.batch_size + config.batch_size)], config, word2id, entity2id, model.is_inference)
         sentence_ppx_loss += torch.sum(sentence_ppx).data
         sentence_ppx_word_loss += torch.sum(sentence_ppx_word).data
         sentence_ppx_local_loss += torch.sum(sentence_ppx_local).data
@@ -118,10 +116,10 @@ def evaluate(model, data_dev, config, word2id, entity2id, epoch = 0, is_test = F
         
     model.is_inference = False
     if model_path != None:
-        print('    perplexity on test set:', np.exp(sentence_ppx_loss.cpu() / len(data_dev)), np.exp(sentence_ppx_word_loss.cpu() / (len(data_dev) - int(word_cut))), np.exp(sentence_ppx_local_loss.cpu() / (len(data_dev) - int(local_cut))), np.exp(sentence_ppx_only_two_loss.cpu() / (len(data_dev) - int(only_two_cut))))
+        print('    perplexity on test set:', np.exp(sentence_ppx_loss.cpu() / len(data_test)), np.exp(sentence_ppx_word_loss.cpu() / (len(data_test) - int(word_cut))), np.exp(sentence_ppx_local_loss.cpu() / (len(data_test) - int(local_cut))), np.exp(sentence_ppx_only_two_loss.cpu() / (len(data_test) - int(only_two_cut))))
         exit()
-    print('    perplexity on dev set:', np.exp(sentence_ppx_loss.cpu() / len(data_dev)), np.exp(sentence_ppx_word_loss.cpu() / (len(data_dev) - int(word_cut))), np.exp(sentence_ppx_local_loss.cpu() / (len(data_dev) - int(local_cut))), np.exp(sentence_ppx_only_two_loss.cpu() / (len(data_dev) - int(only_two_cut))))
-    return np.exp(sentence_ppx_loss.cpu() / len(data_dev)), np.exp(sentence_ppx_word_loss.cpu() / (len(data_dev) - int(word_cut))), np.exp(sentence_ppx_local_loss.cpu() / (len(data_dev) - int(local_cut))), np.exp(sentence_ppx_only_two_loss.cpu() / (len(data_dev) - int(only_two_cut)))
+    print('    perplexity on test set:', np.exp(sentence_ppx_loss.cpu() / len(data_test)), np.exp(sentence_ppx_word_loss.cpu() / (len(data_test) - int(word_cut))), np.exp(sentence_ppx_local_loss.cpu() / (len(data_test) - int(local_cut))), np.exp(sentence_ppx_only_two_loss.cpu() / (len(data_test) - int(only_two_cut))))
+    return np.exp(sentence_ppx_loss.cpu() / len(data_test)), np.exp(sentence_ppx_word_loss.cpu() / (len(data_test) - int(word_cut))), np.exp(sentence_ppx_local_loss.cpu() / (len(data_test) - int(local_cut))), np.exp(sentence_ppx_only_two_loss.cpu() / (len(data_test) - int(only_two_cut)))
 
 
 
@@ -129,7 +127,7 @@ def evaluate(model, data_dev, config, word2id, entity2id, epoch = 0, is_test = F
 def main():
     config = Config(model = 'ConceptFlow', description = 'Training ConceptFlow')
     config.list_all_member()
-    raw_vocab, data_train, data_dev, data_test = prepare_data(config)
+    raw_vocab, data_train, data_test = prepare_data(config)
     word2id, entity2id, vocab, embed, entity_vocab, entity_embed, relation_vocab, relation_embed, entity_relation_embed = build_vocab(config.data_dir, raw_vocab, config = config)  
     model = use_cuda(ConceptFlow(config, embed, entity_relation_embed))
 
@@ -178,7 +176,7 @@ def main():
             
             print ("perplexity for epoch", epoch + 1, ":", np.exp(sentence_ppx_loss.cpu() / len(data_train)), " ppx_word: ", np.exp(sentence_ppx_word_loss.cpu() / (len(data_train) - int(word_cut))), " ppx_local: ", np.exp(sentence_ppx_local_loss.cpu() / (len(data_train) - int(local_cut))), " ppx_only_two: ", np.exp(sentence_ppx_only_two_loss.cpu() / (len(data_train) - int(only_two_cut))))
             torch.save(model.state_dict(), config.model_save_name + '_epoch_' + str(epoch + 1) + '.pkl')
-            ppx, ppx_word, ppx_local, ppx_only_two = evaluate(model, data_dev, config, word2id, entity2id, epoch + 1)
+            ppx, ppx_word, ppx_local, ppx_only_two = evaluate(model, data_test, config, word2id, entity2id, epoch + 1)
             ppx_f = open(config.result_dir_name,'a')
             ppx_f.write("epoch " + str(epoch + 1) + " ppx: " + str(ppx) + " ppx_word: " + str(ppx_word) + " ppx_local: " + str(ppx_local) + " ppx_only_two: " + str(ppx_only_two) + '\n')
             ppx_f.close()

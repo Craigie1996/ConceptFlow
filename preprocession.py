@@ -33,15 +33,12 @@ def prepare_data(config):
                 if idx % 100000 == 0: print('read train file line %d' % idx)
                 data_train.append(json.loads(line))
 
-    
-    with open('%s/validset.txt' % config.data_dir) as f:
-        for line in f:
-            data_dev.append(json.loads(line))
+
     with open('%s/testset.txt' % config.data_dir) as f:
         for line in f:
             data_test.append(json.loads(line))
     
-    return raw_vocab, data_train, data_dev, data_test
+    return raw_vocab, data_train, data_test
 
 def build_vocab(path, raw_vocab, config, trans='transE'):
 
